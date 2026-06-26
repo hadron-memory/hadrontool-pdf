@@ -1,37 +1,43 @@
-# hadrontool-pdf — stateless markdown<->PDF renderer.
+# hadrontool-pdf — stateless Markdown<->PDF renderer.
 #
-# Uses Puppeteer's official base image, which ships a matching Chromium plus all
-# the system fonts/libs it needs. This is the low-friction path for a standalone
-# renderer (vs. wiring puppeteer-core against an Alpine chromium apk).
-FROM ghcr.io/puppeteer/puppeteer:25.2.1 AS base
+# Built by Komodo from this repo's `main`, pushed to GHCR, deployed on the
+# `komodo_default` network as an INTERNAL-ONLY service: no Traefik router, no
+# public DNS. hadron-server reaches it by container name at http://hadrontool-pdf:8080.
+# Secrets are injected at runtime by Doppler (`doppler run --`), matching
+# hadron-server / hadron-portal — Komodo sets only DOPPLER_TOKEN.
+#
+# Base: the official Puppeteer image ships a Chromium matching the puppeteer npm
+# version. KEEP THIS TAG IN SYNC with the locked `puppeteer` in package-lock.json
+# (both 25.2.1) — a version mismatch breaks browser launch.
+FROM ghcr.io/puppeteer/puppeteer:25.2.1
 
-# The base image runs as the non-root `pptruser`; switch to root only to install.
 USER root
 WORKDIR /app
 
-# Use the Chromium that ships in the base image instead of downloading another.
-ENV PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
-    NODE_ENV=production
+# Doppler CLI for runtime secret injection (same pattern as the other services).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+  && curl -sLf --retry 3 --tlsv1.2 --proto '=https' 'https://cli.doppler.com/install.sh' | sh \
+  && apt-get purge -y curl gnupg && apt-get autoremove -y \
+  && rm -rf /var/lib/apt/lists/*
 
-# --- deps ---
-COPY package.json ./
-# No lockfile committed yet; once you commit pnpm-lock.yaml / package-lock.json,
-# switch this to the frozen-install form for reproducible builds.
-RUN npm install --omit=dev && cp -r node_modules /tmp/prod_node_modules \
-    && npm install
+# The base image already contains the matching Chromium; don't re-download it
+# during `npm ci`. At runtime puppeteer.launch() finds the image's browser in
+# the default cache (~/.cache/puppeteer for pptruser).
+ENV NODE_ENV=production \
+    PORT=8080 \
+    PUPPETEER_SKIP_DOWNLOAD=true
 
-# --- build ---
+# Reproducible install from the committed lockfile, then compile and drop dev deps.
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
-
-# --- prune to production deps ---
-RUN rm -rf node_modules && mv /tmp/prod_node_modules node_modules
+RUN npm run build && npm prune --omit=dev
 
 RUN chown -R pptruser:pptruser /app
 USER pptruser
 
 EXPOSE 8080
-ENV PORT=8080
-CMD ["node", "dist/index.js"]
+# Doppler injects PDF_SERVICE_TOKEN / NODE_ENV / PORT etc. via DOPPLER_TOKEN.
+CMD ["doppler", "run", "--", "node", "dist/index.js"]
