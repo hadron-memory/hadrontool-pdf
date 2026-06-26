@@ -104,6 +104,9 @@ dist
 # vitepress cache directory
 **/.vitepress/cache
 
+# JetBrains IDEs
+.idea/
+
 # Docusaurus cache and generated files
 .docusaurus
 
