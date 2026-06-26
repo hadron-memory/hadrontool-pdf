@@ -29,8 +29,11 @@ ENV NODE_ENV=production \
     PUPPETEER_SKIP_DOWNLOAD=true
 
 # Reproducible install from the committed lockfile, then compile and drop dev deps.
+# --include=dev is required because NODE_ENV=production (set above) would
+# otherwise make `npm ci` skip devDependencies (typescript/tsx) and the build
+# would fail with `tsc: not found`.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
