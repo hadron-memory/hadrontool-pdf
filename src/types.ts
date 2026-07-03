@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+/** Shared input limits (kept in one place so every mode enforces the same cap). */
+export const MAX_HTML_CHARS = 5_000_000;
+export const MAX_TITLE_CHARS = 500;
+
 /** Page geometry options shared by the markdown->PDF endpoint. */
 export const PdfOptionsSchema = z
   .object({
@@ -75,11 +79,11 @@ export interface PdfToMarkdownResult {
 
 /** JSON body shape for html->markdown (alternative to a raw text/html body). */
 export const HtmlToMarkdownSchema = z.object({
-  html: z.string().min(1, 'html must not be empty').max(5_000_000),
+  html: z.string().min(1, 'html must not be empty').max(MAX_HTML_CHARS),
   options: z
     .object({
       /** Overrides the title otherwise sniffed from the document's <title>. */
-      title: z.string().max(500).optional(),
+      title: z.string().max(MAX_TITLE_CHARS).optional(),
     })
     .optional(),
 });

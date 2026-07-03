@@ -2,6 +2,7 @@ import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import sanitizeHtml from 'sanitize-html';
 import type { HtmlToMarkdownResult } from '../types.js';
+import { MAX_TITLE_CHARS } from '../types.js';
 
 /**
  * The structural tags we keep before converting to Markdown. Anything not in
@@ -29,10 +30,24 @@ const turndown = new TurndownService({
 });
 turndown.use(gfm); // GFM tables, strikethrough, task lists
 
+// Named entities that commonly appear in <title> text. Not exhaustive — an
+// exotic entity degrades to its raw form, which is acceptable for a title.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'",
+};
+
 function extractTitle(html: string): string | undefined {
   const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
-  const title = m?.[1]?.replace(/\s+/g, ' ').trim();
-  return title || undefined;
+  if (!m) return undefined;
+  const title = m[1]
+    .replace(/<[^>]*>/g, '') // strip any nested tags (<title>My <b>Page</b></title>)
+    .replace(/&(#?\w+);/g, (whole, ref: string) =>
+      Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, ref) ? NAMED_ENTITIES[ref] : whole,
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Cap to the same bound the request-side option enforces.
+  return title ? title.slice(0, MAX_TITLE_CHARS) : undefined;
 }
 
 // Spec: cor:cnv:010:01 (HTML→Markdown import)
@@ -51,10 +66,11 @@ export function htmlToMarkdown(html: string, options?: { title?: string }): Html
       a: ['href', 'title'],
       img: ['src', 'alt', 'title'],
     },
-    // Drop javascript:, file:, and other schemes; keep only safe link targets.
-    allowedSchemes: ['http', 'https', 'mailto'],
+    // Keep only http(s) link targets; drop javascript:, mailto:, data:, file:, etc.
+    allowedSchemes: ['http', 'https'],
     // Remove these tags *and their contents* entirely (not just the wrapper).
-    nonTextTags: ['script', 'style', 'noscript', 'textarea'],
+    // `title` is included so the <title> text does not leak into the body.
+    nonTextTags: ['script', 'style', 'noscript', 'textarea', 'title'],
   });
 
   const markdown = turndown

@@ -8,6 +8,7 @@ import {
   PdfOptionsSchema,
   HtmlToMarkdownSchema,
   MarkdownToHtmlSchema,
+  MAX_HTML_CHARS,
 } from '../types.js';
 import { markdownToHtml } from '../lib/markdownToHtml.js';
 import { htmlToPdf } from '../lib/htmlToPdf.js';
@@ -145,6 +146,10 @@ convertRouter.post(
       if (contentType.includes('text/html')) {
         if (typeof req.body !== 'string' || req.body.length === 0) {
           throw new HttpError(400, 'empty text/html body');
+        }
+        // Enforce the same cap the JSON schema applies, so both modes match.
+        if (req.body.length > MAX_HTML_CHARS) {
+          throw new HttpError(413, `html body exceeds ${MAX_HTML_CHARS} characters`);
         }
         html = req.body;
       } else {

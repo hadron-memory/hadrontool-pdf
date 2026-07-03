@@ -91,6 +91,15 @@ describe('POST /convert/markdown-to-html', () => {
     expect(res.body.html).toContain('<h1>Hi</h1>');
     expect(res.body.bytes).toBe(Buffer.byteLength(res.body.html));
   });
+
+  it('neutralizes a </style> breakout in the css option', async () => {
+    const res = await request(app)
+      .post('/convert/markdown-to-html')
+      .send({ markdown: '# Hi', options: { css: '</style><script>alert(1)</script>' } });
+    expect(res.status).toBe(200);
+    // The injected close tag must not close the real <style> element.
+    expect(res.text).not.toContain('</style><script>');
+  });
 });
 
 describe('POST /convert/html-to-markdown', () => {
@@ -137,6 +146,23 @@ describe('POST /convert/html-to-markdown', () => {
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('My Page');
     expect(res.body.markdown).toContain('# Body');
+    // The <title> text must not leak into the converted body.
+    expect(res.body.markdown).not.toContain('My Page');
+  });
+
+  it('strips nested tags and decodes entities in the sniffed title', async () => {
+    const html = '<title>Foo &amp; <b>Bar</b> &quot;baz&quot;</title><p>body</p>';
+    const res = await request(app).post('/convert/html-to-markdown').send({ html });
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Foo & Bar "baz"');
+  });
+
+  it('drops mailto: link targets, keeping only http(s)', async () => {
+    const html = '<p><a href="mailto:x@example.com">mail</a> <a href="https://ok.example">ok</a></p>';
+    const res = await request(app).post('/convert/html-to-markdown').send({ html });
+    expect(res.status).toBe(200);
+    expect(res.body.markdown).not.toContain('mailto:');
+    expect(res.body.markdown).toContain('[ok](https://ok.example)');
   });
 });
 
