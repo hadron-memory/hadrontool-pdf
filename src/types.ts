@@ -34,6 +34,28 @@ export const MarkdownToPdfSchema = z.object({
 
 export type MarkdownToPdfRequest = z.infer<typeof MarkdownToPdfSchema>;
 
+/**
+ * Options for markdown->HTML. A subset of PdfOptions — only the two fields that
+ * affect the HTML document itself apply; page geometry (format/margin/...) is
+ * PDF-only. `PdfOptions` is structurally assignable to this, so the shared
+ * `markdownToHtml()` renderer accepts either.
+ */
+export const HtmlOptionsSchema = z.object({
+  /** Optional document title; rendered into <title>. */
+  title: z.string().max(500).optional(),
+  /** Extra CSS appended after the default stylesheet. */
+  css: z.string().max(100_000).optional(),
+});
+
+export type HtmlOptions = z.infer<typeof HtmlOptionsSchema>;
+
+export const MarkdownToHtmlSchema = z.object({
+  markdown: z.string().min(1, 'markdown must not be empty').max(5_000_000),
+  options: HtmlOptionsSchema.optional(),
+});
+
+export type MarkdownToHtmlRequest = z.infer<typeof MarkdownToHtmlSchema>;
+
 /** JSON body shape for pdf->markdown (alternative to a raw application/pdf body). */
 export const PdfToMarkdownSchema = z.object({
   pdfBase64: z.string().min(1),

@@ -44,6 +44,11 @@ npm run test:watch # vitest
 - `POST /convert/markdown-to-pdf` — render Markdown to PDF; returns `application/pdf` bytes,
   or `{ pdfBase64, bytes }` with `Accept: application/json` / `?format=base64` (for embedding
   in a GraphQL response — the shape `hadron-server`'s `nodeExport` PDF path consumes).
+- `POST /convert/markdown-to-html` — render Markdown to a complete, self-contained HTML document
+  (inline print CSS, no external fetches); returns `text/html` bytes, or `{ html, bytes }` with
+  `Accept: application/json` / `?format=json`. Consumer: `hadron-server`'s `nodeExport` HTML phase
+  (`cor:int:020:02` / #394), which the portal export/Download button routes through. Pure/synchronous
+  — no Chromium. Same `markdownToHtml()` renderer the PDF path uses as its first stage.
 - `POST /convert/pdf-to-markdown` — extract Markdown from a PDF (raw `application/pdf` body or
   `{ pdfBase64 }`). v1 is **text-layer extraction** (headings by font size, paragraphs by gaps) —
   no OCR of scanned/image-only PDFs, no perfect table reconstruction.

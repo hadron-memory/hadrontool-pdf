@@ -31,6 +31,7 @@ describe('health + routing', () => {
     const res = await request(app).get('/convert/info');
     expect(res.status).toBe(200);
     expect(res.body.directions).toContain('markdown-to-pdf');
+    expect(res.body.directions).toContain('markdown-to-html');
     expect(res.body.directions).toContain('pdf-to-markdown');
     expect(res.body.directions).toContain('html-to-markdown');
   });
@@ -60,6 +61,35 @@ describe('POST /convert/pdf-to-markdown validation', () => {
       .set('content-type', 'application/pdf')
       .send(Buffer.from('not a pdf'));
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /convert/markdown-to-html', () => {
+  it('rejects an empty markdown body', async () => {
+    const res = await request(app).post('/convert/markdown-to-html').send({ markdown: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('renders a self-contained HTML document by default', async () => {
+    const res = await request(app)
+      .post('/convert/markdown-to-html')
+      .send({ markdown: '# Title\n\nHello **world**.', options: { title: 'Doc' } });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.text).toContain('<!DOCTYPE html>');
+    expect(res.text).toContain('<title>Doc</title>');
+    expect(res.text).toContain('<h1>Title</h1>');
+    expect(res.text).toContain('<strong>world</strong>');
+  });
+
+  it('returns { html, bytes } as JSON when requested', async () => {
+    const res = await request(app)
+      .post('/convert/markdown-to-html?format=json')
+      .send({ markdown: '# Hi' });
+    expect(res.status).toBe(200);
+    expect(typeof res.body.html).toBe('string');
+    expect(res.body.html).toContain('<h1>Hi</h1>');
+    expect(res.body.bytes).toBe(Buffer.byteLength(res.body.html));
   });
 });
 

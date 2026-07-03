@@ -2,7 +2,13 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { MarkdownToPdfSchema, PdfToMarkdownSchema, PdfOptionsSchema, HtmlToMarkdownSchema } from '../types.js';
+import {
+  MarkdownToPdfSchema,
+  PdfToMarkdownSchema,
+  PdfOptionsSchema,
+  HtmlToMarkdownSchema,
+  MarkdownToHtmlSchema,
+} from '../types.js';
 import { markdownToHtml } from '../lib/markdownToHtml.js';
 import { htmlToPdf } from '../lib/htmlToPdf.js';
 import { pdfToMarkdown } from '../lib/pdfToMarkdown.js';
@@ -45,6 +51,41 @@ convertRouter.post(
         .setHeader('Content-Length', pdf.length)
         .setHeader('Content-Disposition', `inline; filename="${(opts.title || 'document').replace(/[^\w.-]/g, '_')}.pdf"`)
         .send(pdf);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /convert/markdown-to-html
+ * Body: { markdown: string, options?: { title, css } }
+ * Returns: a complete, self-contained text/html document by default, or
+ * { html, bytes } when the client sends `Accept: application/json` /
+ * `?format=json` (the shape hadron-server's `nodeExport` HTML path consumes).
+ */
+convertRouter.post(
+  '/markdown-to-html',
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { markdown, options } = MarkdownToHtmlSchema.parse(req.body);
+      const html = markdownToHtml(markdown, options);
+      const bytes = Buffer.byteLength(html);
+
+      const wantsJson =
+        req.query.format === 'json' || req.accepts(['text/html', 'application/json']) === 'application/json';
+
+      logger.info('markdown-to-html', { bytes, json: wantsJson });
+
+      if (wantsJson) {
+        res.json({ html, bytes });
+        return;
+      }
+
+      res
+        .status(200)
+        .setHeader('Content-Type', 'text/html; charset=utf-8')
+        .send(html);
     } catch (err) {
       next(err);
     }
@@ -125,7 +166,7 @@ convertRouter.post(
 convertRouter.get('/info', (_req, res) => {
   res.json({
     service: 'hadrontool-pdf',
-    directions: ['markdown-to-pdf', 'pdf-to-markdown', 'html-to-markdown'],
+    directions: ['markdown-to-pdf', 'markdown-to-html', 'pdf-to-markdown', 'html-to-markdown'],
     allowRemote: config.allowRemote,
     authRequired: Boolean(config.serviceToken),
   });
