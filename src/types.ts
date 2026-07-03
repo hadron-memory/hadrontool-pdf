@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+/** Shared input limits (kept in one place so every mode enforces the same cap). */
+export const MAX_HTML_CHARS = 5_000_000;
+export const MAX_TITLE_CHARS = 500;
+
 /** Page geometry options shared by the markdown->PDF endpoint. */
 export const PdfOptionsSchema = z
   .object({
@@ -34,6 +38,28 @@ export const MarkdownToPdfSchema = z.object({
 
 export type MarkdownToPdfRequest = z.infer<typeof MarkdownToPdfSchema>;
 
+/**
+ * Options for markdown->HTML. A subset of PdfOptions — only the two fields that
+ * affect the HTML document itself apply; page geometry (format/margin/...) is
+ * PDF-only. `PdfOptions` is structurally assignable to this, so the shared
+ * `markdownToHtml()` renderer accepts either.
+ */
+export const HtmlOptionsSchema = z.object({
+  /** Optional document title; rendered into <title>. */
+  title: z.string().max(500).optional(),
+  /** Extra CSS appended after the default stylesheet. */
+  css: z.string().max(100_000).optional(),
+});
+
+export type HtmlOptions = z.infer<typeof HtmlOptionsSchema>;
+
+export const MarkdownToHtmlSchema = z.object({
+  markdown: z.string().min(1, 'markdown must not be empty').max(5_000_000),
+  options: HtmlOptionsSchema.optional(),
+});
+
+export type MarkdownToHtmlRequest = z.infer<typeof MarkdownToHtmlSchema>;
+
 /** JSON body shape for pdf->markdown (alternative to a raw application/pdf body). */
 export const PdfToMarkdownSchema = z.object({
   pdfBase64: z.string().min(1),
@@ -49,4 +75,23 @@ export interface PdfToMarkdownResult {
     title?: string;
     author?: string;
   };
+}
+
+/** JSON body shape for html->markdown (alternative to a raw text/html body). */
+export const HtmlToMarkdownSchema = z.object({
+  html: z.string().min(1, 'html must not be empty').max(MAX_HTML_CHARS),
+  options: z
+    .object({
+      /** Overrides the title otherwise sniffed from the document's <title>. */
+      title: z.string().max(MAX_TITLE_CHARS).optional(),
+    })
+    .optional(),
+});
+
+export type HtmlToMarkdownRequest = z.infer<typeof HtmlToMarkdownSchema>;
+
+export interface HtmlToMarkdownResult {
+  markdown: string;
+  /** Best-effort title, from the request options or the document's <title>. */
+  title?: string;
 }

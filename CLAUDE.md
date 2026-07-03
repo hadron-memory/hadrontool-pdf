@@ -44,9 +44,21 @@ npm run test:watch # vitest
 - `POST /convert/markdown-to-pdf` — render Markdown to PDF; returns `application/pdf` bytes,
   or `{ pdfBase64, bytes }` with `Accept: application/json` / `?format=base64` (for embedding
   in a GraphQL response — the shape `hadron-server`'s `nodeExport` PDF path consumes).
+- `POST /convert/markdown-to-html` — render Markdown to a complete, self-contained HTML document
+  (inline print CSS, no external fetches); returns `text/html` bytes, or `{ html, bytes }` with
+  `Accept: application/json` / `?format=json`. Consumer: `hadron-server`'s `nodeExport` HTML phase
+  (`cor:int:020:02` / #394), which the portal export/Download button routes through. Pure/synchronous
+  — no Chromium. Same `markdownToHtml()` renderer the PDF path uses as its first stage.
 - `POST /convert/pdf-to-markdown` — extract Markdown from a PDF (raw `application/pdf` body or
   `{ pdfBase64 }`). v1 is **text-layer extraction** (headings by font size, paragraphs by gaps) —
   no OCR of scanned/image-only PDFs, no perfect table reconstruction.
+- `POST /convert/html-to-markdown` — convert HTML to Markdown (raw `text/html` body or
+  `{ html, options?: { title } }`); returns `{ markdown, title? }`. For **content** HTML — a web
+  page's main article, extracted client-side (reader mode) by the caller, not a raw full page —
+  being imported into a node (the Chrome-extension web-clip path). HTML is **sanitized** first
+  (scripts/styles/handlers and non-http(s) URLs dropped); conversion is **lossy** (no perfect
+  table/layout round-trip). Pure/synchronous — no Chromium. Import direction has no export-contract
+  spec (`cor:int:020:02`/#394 are the reverse, node→render).
 - `GET /convert/info` · `GET /healthz` (liveness) · `GET /readyz` (readiness + Chromium warm).
 
 ## Where things live
@@ -54,7 +66,8 @@ npm run test:watch # vitest
 - `src/index.ts` — entry; `src/app.ts` — Express wiring; `src/config.ts` — env config; `src/logger.ts`.
 - `src/routes/convert.ts` — the `/convert/*` handlers (+ `convert.test.ts`); `src/routes/health.ts`.
 - `src/lib/markdownToHtml.ts` → `src/lib/htmlToPdf.ts` (Puppeteer) → PDF; `src/lib/browser.ts` —
-  the shared/warm Chromium instance; `src/lib/pdfToMarkdown.ts` — text extraction.
+  the shared/warm Chromium instance; `src/lib/pdfToMarkdown.ts` — text extraction;
+  `src/lib/htmlToMarkdown.ts` — sanitize (`sanitize-html`) → `turndown` (GFM) → Markdown.
 - `src/middleware/auth.ts` — bearer-token gate; `src/middleware/error.ts`.
 
 ## Things to know before editing

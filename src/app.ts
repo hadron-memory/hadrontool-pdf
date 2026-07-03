@@ -15,8 +15,10 @@ export function createApp(): Express {
   app.disable('x-powered-by');
   app.use(cors());
 
-  // pdf-to-markdown accepts a raw application/pdf body; everything else is JSON.
+  // pdf-to-markdown accepts a raw application/pdf body, html-to-markdown a raw
+  // text/html body; everything else is JSON.
   app.use(express.raw({ type: 'application/pdf', limit: config.maxBodySize }));
+  app.use(express.text({ type: 'text/html', limit: config.maxBodySize }));
   app.use(express.json({ limit: config.maxBodySize }));
 
   app.use(healthRouter);

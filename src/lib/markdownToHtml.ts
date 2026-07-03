@@ -1,7 +1,7 @@
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import hljs from 'highlight.js';
-import type { PdfOptions } from '../types.js';
+import type { HtmlOptions } from '../types.js';
 
 /**
  * A fresh Marked instance with syntax highlighting. We construct one per call is
@@ -101,10 +101,12 @@ function escapeHtml(s: string): string {
  * served to a browser, so embedded HTML in the Markdown is rendered as-is by
  * design — the trust boundary is the caller, enforced by the bearer token.
  */
-export function markdownToHtml(markdown: string, options?: PdfOptions): string {
+export function markdownToHtml(markdown: string, options?: HtmlOptions): string {
   const bodyHtml = marked.parse(markdown, { async: false }) as string;
   const title = options?.title ? escapeHtml(options.title) : 'Document';
-  const extraCss = options?.css ?? '';
+  // Neutralize a `</style>` in caller CSS so it can't break out of the <style>
+  // element and inject markup into the returned document.
+  const extraCss = (options?.css ?? '').replace(/<\/style/gi, '<\\/style');
 
   return `<!DOCTYPE html>
 <html lang="en">
