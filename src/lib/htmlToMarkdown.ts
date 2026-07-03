@@ -35,6 +35,7 @@ function extractTitle(html: string): string | undefined {
   return title || undefined;
 }
 
+// Spec: cor:cnv:010:01 (HTML→Markdown import)
 /**
  * Convert HTML to Markdown for node import — e.g. a web page's main article,
  * already extracted client-side (reader mode) by the caller, not a raw full
