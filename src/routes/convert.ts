@@ -2,10 +2,11 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { MarkdownToPdfSchema, PdfToMarkdownSchema, PdfOptionsSchema } from '../types.js';
+import { MarkdownToPdfSchema, PdfToMarkdownSchema, PdfOptionsSchema, HtmlToMarkdownSchema } from '../types.js';
 import { markdownToHtml } from '../lib/markdownToHtml.js';
 import { htmlToPdf } from '../lib/htmlToPdf.js';
 import { pdfToMarkdown } from '../lib/pdfToMarkdown.js';
+import { htmlToMarkdown } from '../lib/htmlToMarkdown.js';
 import { logger } from '../logger.js';
 
 export const convertRouter = Router();
@@ -86,11 +87,45 @@ convertRouter.post(
   },
 );
 
+/**
+ * POST /convert/html-to-markdown
+ * Body: a raw text/html payload, OR JSON { html: string, options?: { title } }.
+ * Returns: { markdown, title? }. Intended for content HTML (e.g. a web page's
+ * main article, extracted client-side) being imported into a node.
+ */
+convertRouter.post(
+  '/html-to-markdown',
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      let html: string;
+      let title: string | undefined;
+      const contentType = req.get('content-type') ?? '';
+
+      if (contentType.includes('text/html')) {
+        if (typeof req.body !== 'string' || req.body.length === 0) {
+          throw new HttpError(400, 'empty text/html body');
+        }
+        html = req.body;
+      } else {
+        const parsed = HtmlToMarkdownSchema.parse(req.body);
+        html = parsed.html;
+        title = parsed.options?.title;
+      }
+
+      const result = htmlToMarkdown(html, { title });
+      logger.info('html-to-markdown', { chars: result.markdown.length });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // Surfaces config to callers/operators without exposing secrets.
 convertRouter.get('/info', (_req, res) => {
   res.json({
     service: 'hadrontool-pdf',
-    directions: ['markdown-to-pdf', 'pdf-to-markdown'],
+    directions: ['markdown-to-pdf', 'pdf-to-markdown', 'html-to-markdown'],
     allowRemote: config.allowRemote,
     authRequired: Boolean(config.serviceToken),
   });

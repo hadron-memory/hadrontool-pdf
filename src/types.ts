@@ -50,3 +50,22 @@ export interface PdfToMarkdownResult {
     author?: string;
   };
 }
+
+/** JSON body shape for html->markdown (alternative to a raw text/html body). */
+export const HtmlToMarkdownSchema = z.object({
+  html: z.string().min(1, 'html must not be empty').max(5_000_000),
+  options: z
+    .object({
+      /** Overrides the title otherwise sniffed from the document's <title>. */
+      title: z.string().max(500).optional(),
+    })
+    .optional(),
+});
+
+export type HtmlToMarkdownRequest = z.infer<typeof HtmlToMarkdownSchema>;
+
+export interface HtmlToMarkdownResult {
+  markdown: string;
+  /** Best-effort title, from the request options or the document's <title>. */
+  title?: string;
+}
