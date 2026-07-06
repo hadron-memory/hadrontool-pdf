@@ -1,0 +1,50 @@
+name: CI
+
+# Gate for hadrontool-pdf. Komodo builds + deploys this service's image on
+# every push to `main` (Deployment "redeploy_on_build"), with no other check
+# in between — so a broken merge ships straight to the alpha container. This
+# workflow is that missing check: typecheck, tests, and a full `tsc` build run
+# on every PR and on `main`, so a regression fails here before it can deploy.
+#
+# (Context: issue hadron-server#503 — the html-to-markdown route was merged but
+# never validated/redeployed. This closes the "no gate" half of that gap.)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    env:
+      # Puppeteer is a dependency (markdown->PDF), but its Chromium download is
+      # heavy and network-flaky in CI. Skip it: the render tests self-skip when
+      # Chromium can't launch (src/routes/convert.test.ts), so `npm ci` and the
+      # rest of the suite stay fast and reliable. To exercise the render path
+      # here later, drop this and add `npx puppeteer browsers install chrome`.
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
