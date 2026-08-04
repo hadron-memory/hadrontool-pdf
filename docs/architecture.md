@@ -15,7 +15,7 @@ implementation spec.
 
 | Prior art | What we take from it |
 |---|---|
-| [`design:export-node-pdf`](hrn:node:hadronmemory.com::hadron-server::design:export-node-pdf) | The whole boundary analysis. It recommends **splitting the PDF pipeline at HTML→PDF**: hadron-server keeps auth + decryption + node loading; a **stateless renderer holds no DB, no keys, no access-control logic**. It also picks **Chromium (Puppeteer)** over pure-JS for Markdown fidelity, rules out hosted SaaS render APIs (in-infra privacy posture), and says **delete any `/tmp` "file mode."** This tool is that renderer. |
+| [`design:export-node-pdf`](hrn:node:hadronmemory.com:hadron-server:design:export-node-pdf) | The whole boundary analysis. It recommends **splitting the PDF pipeline at HTML→PDF**: hadron-server keeps auth + decryption + node loading; a **stateless renderer holds no DB, no keys, no access-control logic**. It also picks **Chromium (Puppeteer)** over pure-JS for Markdown fidelity, rules out hosted SaaS render APIs (in-infra privacy posture), and says **delete any `/tmp` "file mode."** This tool is that renderer. |
 | [hadrontool-email architecture](https://github.com/hadron-memory/hadrontool-email) | The "a tool is a separate process that owns one provider-specific concern" shape, and the deployment model (separate container alongside hadron-server). |
 
 **One difference from the design node, by request:** the node's recommendation
