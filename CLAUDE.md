@@ -10,24 +10,24 @@ See [docs/architecture.md](docs/architecture.md) for the boundary.
 
 Hadron is the platform's institutional memory. Relevant memories:
 
-- `hrn:memory:hadronmemory.com::hadrontool-pdf` — this tool's own findings/conventions
-- `hrn:memory:hadronmemory.com::dev` — shared findings, conventions, ops, the `preflight` routing index
-- `hrn:memory:hadronmemory.com::hadron-server` — the caller; newer server findings/conventions
-- `hrn:memory:hadronmemory.com::specs` — product specs (loc-as-citation). This service implements
+- `hrn:mem:hadronmemory.com:hadrontool-pdf` — this tool's own findings/conventions
+- `hrn:mem:hadronmemory.com:dev` — shared findings, conventions, ops, the `preflight` routing index
+- `hrn:mem:hadronmemory.com:hadron-server` — the caller; newer server findings/conventions
+- `hrn:mem:hadronmemory.com:specs` — product specs (loc-as-citation). This service implements
   the PDF render path of the **export contract** at `cor:int:020:02` (presentation export; HTML/PDF
   phases tracked in hadron-server#394).
 
 (1) **Query Hadron before reading code.** For the topics/entities in a request, run
 `hadron_find_nodes` first, then `hadron_get_node` on promising hits; cite node `loc` values.
 
-(2) Read `hadron_get_node hrn:node:hadronmemory.com::dev::instructions` once per session (what
-Hadron is, URN grammar, the specs corpus), and `hadron_get_node hrn:node:hadronmemory.com::dev::preflight`
+(2) Read `hadron_get_node hrn:node:hadronmemory.com:dev:instructions` once per session (what
+Hadron is, URN grammar, the specs corpus), and `hadron_get_node hrn:node:hadronmemory.com:dev:preflight`
 before a change (the shared server/platform routing index).
 
 (3) Capture a non-obvious finding the moment it emerges (`hadron_create_node` / `hadron_update_node`) —
 don't batch to end-of-session.
 
-(4) The **Hadron CLI is a superset of the MCP tools**: e.g. `hadron spec get cor:int:020:02 -m hadronmemory.com::specs`.
+(4) The **Hadron CLI is a superset of the MCP tools**: e.g. `hadron spec get cor:int:020:02 -m hadronmemory.com:specs`.
 
 ## Quick reference
 
