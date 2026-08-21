@@ -91,6 +91,36 @@ describe('injectExtraCss', () => {
     expect(out).toContain('</script><style>\np{margin:0}\n</style>\n</head>');
   });
 
+  // <title> is RCDATA: its content is text until its own closing tag, so the
+  // document below is valid and its FIRST </head> is not the head boundary.
+  it('ignores a </head> that appears inside a <title>', () => {
+    const html = '<html><head><title>Example </head> text</title></head><body>b</body></html>';
+    const out = injectExtraCss(html, 'p{margin:0}');
+
+    expect(out).toContain('<title>Example </head> text</title><style>\np{margin:0}\n</style>\n</head>');
+    // The title must come back exactly as written.
+    expect(out).toContain('<title>Example </head> text</title>');
+  });
+
+  it('ignores a </head> that appears inside a <textarea>', () => {
+    const html = '<html><head></head><body><textarea></head></textarea></body></html>';
+    const out = injectExtraCss(html, 'p{margin:0}');
+    // The real (and only genuine) </head> comes first, so it wins regardless —
+    // what this pins is that the textarea text is not treated as a tag.
+    expect(out).toContain('<style>\np{margin:0}\n</style>\n</head>');
+    expect(out).toContain('<textarea></head></textarea>');
+  });
+
+  // Comments are legal before the doctype. Inserting ahead of them makes the
+  // doctype late, which is quirks mode again by a different route.
+  it('inserts after a doctype that is preceded by comments', () => {
+    const html = '<!-- license --><!DOCTYPE html><title>Invoice</title><main>total</main>';
+    const out = injectExtraCss(html, 'main{margin:0}');
+
+    expect(out.startsWith('<!-- license --><!DOCTYPE html>')).toBe(true);
+    expect(out.indexOf('<style>')).toBeGreaterThan(out.toLowerCase().indexOf('<!doctype html>'));
+  });
+
   it('ignores a <body> that appears inside a comment when falling back', () => {
     const html = '<!-- <body> --><body class="real">hi</body>';
     const out = injectExtraCss(html, 'p{margin:0}');
