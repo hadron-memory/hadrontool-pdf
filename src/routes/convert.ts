@@ -66,18 +66,22 @@ convertRouter.post(
  * Returns: application/pdf bytes by default, or { pdfBase64, bytes } when the
  * client sends `Accept: application/json` or `?format=base64`.
  *
- * The caller's document is rendered VERBATIM — no wrapping, no default
- * stylesheet. That is the point of this direction: it is for documents that are
- * a layout rather than prose, where the Markdown path's wrapper would fight the
- * caller's own positioning. Everything else matches markdown-to-pdf: same auth,
- * same page geometry, same JavaScript-disabled and remote-blocked rendering.
+ * The caller's HTML is rendered VERBATIM — nothing is wrapped, nothing is
+ * restyled. Typically that is a complete document; a bare fragment also works,
+ * since Chromium supplies the missing structure. That is the point of this
+ * direction: it is for output that is a layout rather than prose, where the
+ * Markdown path's wrapper and default stylesheet would fight the caller's own
+ * positioning. Everything else matches markdown-to-pdf: same auth, same page
+ * geometry, same JavaScript-disabled and remote-blocked rendering.
  */
 convertRouter.post(
   '/html-to-pdf',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       let html: string;
-      let options: unknown;
+      // Explicitly undefined: the raw text/html mode carries no options, and
+      // `?? {}` below turns that into the documented defaults.
+      let options: unknown = undefined;
       const contentType = req.get('content-type') ?? '';
 
       if (contentType.includes('text/html')) {

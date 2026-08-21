@@ -293,7 +293,7 @@ describe('round-trip (requires Chromium)', () => {
     expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
-  it('applies the css option on top of the caller own styles', async (ctx) => {
+  it("applies the css option on top of the caller's own styles", async (ctx) => {
     if (!browserOk) ctx.skip();
     const html = '<html><head><style>h1{color:#ff0000}</style></head><body><h1>Tinted</h1></body></html>';
     const res = await request(app)

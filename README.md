@@ -13,7 +13,7 @@ platform and why the boundary is drawn here.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/convert/markdown-to-pdf` | Render Markdown to a PDF |
-| `POST` | `/convert/html-to-pdf` | Render a complete HTML document to a PDF |
+| `POST` | `/convert/html-to-pdf` | Render an HTML document to a PDF |
 | `POST` | `/convert/markdown-to-html` | Render Markdown to a self-contained HTML document |
 | `POST` | `/convert/pdf-to-markdown` | Extract Markdown text from a PDF |
 | `POST` | `/convert/html-to-markdown` | Convert content HTML to Markdown |
@@ -59,8 +59,9 @@ curl -sS -X POST http://localhost:8080/convert/markdown-to-pdf \
 For documents that are a **layout** rather than prose — a certificate, an
 invoice, a report cover, a badge. Routing those through Markdown means embedding
 raw HTML in Markdown and fighting the converter over what it escapes, wraps or
-reflows; here the document is rendered **verbatim**, with no wrapper and no
-default stylesheet.
+reflows; here your HTML is rendered **verbatim**, with no wrapper and no default
+stylesheet. Usually that is a complete document — a bare fragment works too,
+since Chromium supplies the missing structure.
 
 Request (JSON), or a raw `text/html` body when you don't need options:
 

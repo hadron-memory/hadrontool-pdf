@@ -41,10 +41,12 @@ export type MarkdownToPdfRequest = z.infer<typeof MarkdownToPdfSchema>;
 /**
  * JSON body shape for html->pdf (alternative to a raw text/html body).
  *
- * The caller supplies a COMPLETE document and it is rendered verbatim — this is
- * the direction to use when the output is a *layout* rather than prose (a
- * certificate, an invoice, a report cover), where routing through Markdown
- * would mean fighting the converter over what it escapes, wraps or reflows.
+ * The caller's HTML is rendered verbatim — usually a complete document, though
+ * a bare fragment works too, since Chromium supplies the missing structure.
+ * Nothing is wrapped and nothing is restyled. This is the direction to use when
+ * the output is a *layout* rather than prose (a certificate, an invoice, a
+ * report cover), where routing through Markdown would mean fighting the
+ * converter over what it escapes, wraps or reflows.
  *
  * Shares `PdfOptionsSchema` with markdown-to-pdf so page geometry behaves
  * identically. `css` is appended to the caller's own styles rather than

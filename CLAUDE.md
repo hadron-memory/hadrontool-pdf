@@ -44,10 +44,11 @@ npm run test:watch # vitest
 - `POST /convert/markdown-to-pdf` — render Markdown to PDF; returns `application/pdf` bytes,
   or `{ pdfBase64, bytes }` with `Accept: application/json` / `?format=base64` (for embedding
   in a GraphQL response — the shape `hadron-server`'s `nodeExport` PDF path consumes).
-- `POST /convert/html-to-pdf` — render a **complete** HTML document to PDF; same response shapes,
+- `POST /convert/html-to-pdf` — render HTML to PDF; same response shapes,
   auth and page geometry as `markdown-to-pdf`. JSON `{ html, options? }`, or a raw `text/html` body
-  when no options are needed. The document is rendered **verbatim** — no wrapper, no default
-  stylesheet — because this direction exists for documents that are a *layout* rather than prose
+  when no options are needed. The HTML is rendered **verbatim** — no wrapper, no default
+  stylesheet — whether it is a complete document or a bare fragment Chromium completes. This
+  direction exists for output that is a *layout* rather than prose
   (certificate, invoice, report cover), where the Markdown path's wrapper fights the caller's own
   positioning. `options.css` is appended after the document's own styles; `options.title` sets the
   download filename only, since the document already carries a `<title>`. Wraps the same

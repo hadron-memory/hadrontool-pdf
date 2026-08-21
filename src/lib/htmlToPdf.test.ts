@@ -8,7 +8,7 @@ describe('injectExtraCss', () => {
     expect(injectExtraCss(html, '')).toBe(html);
   });
 
-  it('appends LAST in <head> so it overrides the document own styles', () => {
+  it("appends LAST in <head> so it overrides the document's own styles", () => {
     const html = '<html><head><style>body{color:red}</style></head><body>hi</body></html>';
     const out = injectExtraCss(html, 'body{color:blue}');
 
@@ -48,8 +48,52 @@ describe('injectExtraCss', () => {
     expect(out).toContain('content:"$& $1 $`"');
   });
 
-  it('is case-insensitive about </HEAD>', () => {
+  it('is case-insensitive about </HEAD>, and preserves the caller casing', () => {
     const out = injectExtraCss('<HTML><HEAD></HEAD><BODY></BODY></HTML>', 'p{margin:0}');
     expect(out).toContain('<style>\np{margin:0}\n</style>\n</HEAD>');
+    // The caller's tag must come back exactly as written, not lowercased.
+    expect(out).not.toContain('</head>');
+  });
+
+  // A late doctype puts Chromium in quirks mode, which changes the box model —
+  // on an endpoint whose whole purpose is rendering a layout the caller has
+  // already positioned. The document below is standards-compliant: <head> and
+  // <body> are both optional tags.
+  it('inserts AFTER a leading doctype when there is no head or body', () => {
+    const html = '<!DOCTYPE html><title>Invoice</title><main>total</main>';
+    const out = injectExtraCss(html, 'main{margin:0}');
+
+    expect(out.toLowerCase().indexOf('<!doctype html>')).toBe(0);
+    expect(out.indexOf('<style>')).toBeGreaterThan(out.toLowerCase().indexOf('<!doctype html>'));
+    expect(out).toContain('<main>total</main>');
+  });
+
+  it('still prepends when there is no doctype, head or body', () => {
+    const out = injectExtraCss('<p>fragment</p>', 'p{margin:0}');
+    expect(out.startsWith('<style>')).toBe(true);
+  });
+
+  // Silent failure: inserting into the comment would drop the stylesheet with
+  // no error and a 200 response.
+  it('ignores a </head> that appears inside a comment', () => {
+    const html = '<html><head><!-- example: </head> --><title>t</title></head><body>b</body></html>';
+    const out = injectExtraCss(html, 'p{margin:0}');
+
+    // The style block lands before the REAL closing tag, after the title.
+    expect(out).toContain('<title>t</title><style>\np{margin:0}\n</style>\n</head>');
+    // And the comment is left exactly as the caller wrote it.
+    expect(out).toContain('<!-- example: </head> -->');
+  });
+
+  it('ignores a </head> that appears inside a script', () => {
+    const html = '<html><head><script>var s = "</head>";</script></head><body>b</body></html>';
+    const out = injectExtraCss(html, 'p{margin:0}');
+    expect(out).toContain('</script><style>\np{margin:0}\n</style>\n</head>');
+  });
+
+  it('ignores a <body> that appears inside a comment when falling back', () => {
+    const html = '<!-- <body> --><body class="real">hi</body>';
+    const out = injectExtraCss(html, 'p{margin:0}');
+    expect(out).toContain('<body class="real">\n<style>');
   });
 });
