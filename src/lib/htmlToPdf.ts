@@ -4,48 +4,6 @@ import { config } from '../config.js';
 import type { PdfOptions } from '../types.js';
 
 /**
- * Append caller-supplied CSS to an HTML string, so it overrides the document's
- * own styles — the same meaning `css` has on the Markdown path, where it is
- * appended after the default stylesheet.
- *
- * ## The block goes at the END, and that is the design rather than a fallback
- *
- * The obvious placement is last inside `<head>`, and it is a trap. Finding that
- * boundary means finding a `</head>` that is really a tag, and HTML has several
- * ways to write one that is not: inside a comment, inside raw text
- * (`<script>`, `<style>`), inside RCDATA (`<title>`, `<textarea>`), and inside a
- * quoted attribute value (`<meta content="… </head> …">`). Getting it wrong
- * inserts the stylesheet somewhere it is parsed as TEXT, so `options.css` is
- * dropped with a 200 and no error. Review found one variant per round; there is
- * no reason to think the list was finished.
- *
- * Appending removes the question. A `<style>` element applies to the whole
- * document wherever it appears — Chromium's parser relocates a trailing one —
- * and being last in document order is exactly what makes it win the cascade at
- * equal specificity, which is the semantics `css` is documented to have. So the
- * placement that is trivial to compute is also the one that is correct.
- *
- * Two properties fall out of it, both worth having:
- *
- * - The caller's document is left BYTE-IDENTICAL as a prefix. Nothing is spliced
- *   into the middle of markup this endpoint promises to render verbatim, and no
- *   casing or whitespace is rewritten.
- * - Nothing can precede the doctype, so a late doctype — and the quirks-mode
- *   box model that comes with it — is structurally impossible rather than
- *   guarded against.
- *
- * The `</style>` neutralization mirrors `markdownToHtml`: without it, CSS
- * carrying a close tag would end the `<style>` element and inject arbitrary
- * markup into the rendered document.
- */
-export function injectExtraCss(html: string, css?: string): string {
-  if (!css) return html;
-
-  const safe = css.replace(/<\/style/gi, '<\\/style');
-  return `${html}\n<style>\n${safe}\n</style>`;
-}
-
-/**
  * Render an HTML document to PDF bytes using the shared headless browser. Each
  * call gets its own page, which is always closed.
  *
@@ -53,8 +11,34 @@ export function injectExtraCss(html: string, css?: string): string {
  * content), and unless PDF_ALLOW_REMOTE is set, every non-inline request is
  * aborted — only `data:` and the initial `about:blank`/document load proceed.
  * That blocks `file://` reads and remote (SSRF) fetches via crafted Markdown.
+ *
+ * `extraCss` is applied to the PARSED DOCUMENT, after `setContent`, never by
+ * concatenating it to the source string. The Markdown path does not use it —
+ * `markdownToHtml` bakes `options.css` into the document it builds — so it is
+ * only the HTML path, where the source is the caller's and cannot be edited
+ * safely, that passes it.
+ *
+ * Why it has to be the DOM. Deciding where a `<style>` belongs in someone
+ * else's markup means knowing the tokenizer's state, and every string-level
+ * answer has a document that defeats it: a `</head>` that is really text
+ * (inside a comment, raw text, RCDATA, or a quoted attribute value) sends the
+ * block somewhere it is parsed as content, and appending at the end is
+ * swallowed whole by a document ending in an open context (`<textarea>text`,
+ * `<!-- comment`). Every one of those failures is SILENT — a 200, a well-formed
+ * PDF, and no styles applied. Adding a node to the parsed document skips the
+ * question: the browser has already resolved the markup, and the node lands in
+ * `<head>` after the document's own styles, which is the cascade position
+ * `css` is documented to have.
+ *
+ * It also retires the `</style>` neutralization that the string form needed:
+ * DOM text content cannot close an element, so caller CSS containing `</style>`
+ * is now just CSS.
  */
-export async function htmlToPdf(html: string, options: PdfOptions): Promise<Buffer> {
+export async function htmlToPdf(
+  html: string,
+  options: PdfOptions,
+  extraCss?: string,
+): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
@@ -77,6 +61,19 @@ export async function htmlToPdf(html: string, options: PdfOptions): Promise<Buff
     });
 
     await page.setContent(html, { waitUntil: 'load', timeout: 30_000 });
+
+    // After setContent, so the browser has already resolved the caller's markup
+    // and there is no tokenizer state left to guess at. addStyleTag appends to
+    // <head>, which puts it after the document's own styles in the cascade.
+    //
+    // This works despite setJavaScriptEnabled(false): that disables scripts
+    // belonging to the PAGE, while addStyleTag runs through the DevTools
+    // protocol, which is not page script. Pinned by an end-to-end test rather
+    // than trusted — a silent failure here looks exactly like success.
+    if (extraCss) {
+      await page.addStyleTag({ content: extraCss });
+    }
+
     await page.emulateMediaType('print');
 
     const pdf = await page.pdf({

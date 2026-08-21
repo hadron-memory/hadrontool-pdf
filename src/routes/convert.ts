@@ -12,7 +12,7 @@ import {
   MAX_HTML_CHARS,
 } from '../types.js';
 import { markdownToHtml } from '../lib/markdownToHtml.js';
-import { htmlToPdf, injectExtraCss } from '../lib/htmlToPdf.js';
+import { htmlToPdf } from '../lib/htmlToPdf.js';
 import { pdfToMarkdown } from '../lib/pdfToMarkdown.js';
 import { htmlToMarkdown } from '../lib/htmlToMarkdown.js';
 import { logger } from '../logger.js';
@@ -100,7 +100,7 @@ convertRouter.post(
       }
 
       const opts = PdfOptionsSchema.parse(options ?? {});
-      const pdf = await htmlToPdf(injectExtraCss(html, opts.css), opts);
+      const pdf = await htmlToPdf(html, opts, opts.css);
 
       const wantsJson =
         req.query.format === 'base64' || req.accepts(['application/pdf', 'application/json']) === 'application/json';

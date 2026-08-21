@@ -323,4 +323,34 @@ describe('round-trip (requires Chromium)', () => {
       'the caller css hid it, so the stylesheet was applied',
     ).not.toContain('VISIBLEMARKER');
   });
+
+  /**
+   * The documents that defeated every string-level way of placing the <style>.
+   * Each contains a `</head>` that is TEXT rather than a tag, or ends in an open
+   * tokenizer context that swallows anything appended after it. Applying the CSS
+   * to the parsed document instead of the source string makes all of them
+   * ordinary — and each failure they used to cause was silent, so they are
+   * asserted on the rendered output rather than on the markup.
+   */
+  it.each([
+    ['</head> in a comment', '<head><!-- </head> --></head><body><p>MARKER</p></body>'],
+    ['</head> in a title', '<head><title>x </head> y</title></head><body><p>MARKER</p></body>'],
+    ['</head> in an attribute', '<head><meta content="a </head> b"></head><body><p>MARKER</p></body>'],
+    ['an unclosed textarea', '<body><p>MARKER</p><textarea>trailing'],
+    ['an unterminated comment', '<body><p>MARKER</p><!-- trailing'],
+  ])('applies the css option to a document with %s', async (_label, html, ctx) => {
+    if (!browserOk) (ctx as { skip: () => void }).skip();
+
+    const res = await request(app)
+      .post('/convert/html-to-pdf?format=base64')
+      .send({ html, options: { css: 'p{display:none}' } });
+    expect(res.status).toBe(200);
+
+    const md = await request(app)
+      .post('/convert/pdf-to-markdown')
+      .set('content-type', 'application/pdf')
+      .send(Buffer.from(res.body.pdfBase64, 'base64'));
+    expect(md.status).toBe(200);
+    expect(md.body.markdown, 'the stylesheet reached the document').not.toContain('MARKER');
+  });
 });
