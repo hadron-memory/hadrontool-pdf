@@ -293,13 +293,34 @@ describe('round-trip (requires Chromium)', () => {
     expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
-  it("applies the css option on top of the caller's own styles", async (ctx) => {
+  it('the css option actually takes effect in the rendered PDF', async (ctx) => {
     if (!browserOk) ctx.skip();
-    const html = '<html><head><style>h1{color:#ff0000}</style></head><body><h1>Tinted</h1></body></html>';
-    const res = await request(app)
-      .post('/convert/html-to-pdf?format=base64')
-      .send({ html, options: { css: 'h1{color:#00ff00}' } });
-    expect(res.status).toBe(200);
-    expect(res.body.bytes).toBeGreaterThan(0);
+
+    // Asserts the OUTCOME rather than where the <style> element was placed.
+    // That distinction is the whole point here: the failure mode this endpoint
+    // kept producing was a stylesheet parsed as text, which returns 200 with a
+    // well-formed PDF and no styles applied — indistinguishable from success
+    // unless something reads the rendered page back.
+    const html = '<html><head></head><body><p>VISIBLEMARKER</p></body></html>';
+
+    const renderThenExtract = async (options?: Record<string, unknown>): Promise<string> => {
+      const pdfRes = await request(app)
+        .post('/convert/html-to-pdf?format=base64')
+        .send(options ? { html, options } : { html });
+      expect(pdfRes.status).toBe(200);
+
+      const mdRes = await request(app)
+        .post('/convert/pdf-to-markdown')
+        .set('content-type', 'application/pdf')
+        .send(Buffer.from(pdfRes.body.pdfBase64, 'base64'));
+      expect(mdRes.status).toBe(200);
+      return mdRes.body.markdown;
+    };
+
+    expect(await renderThenExtract(), 'control: the text renders').toContain('VISIBLEMARKER');
+    expect(
+      await renderThenExtract({ css: 'p{display:none}' }),
+      'the caller css hid it, so the stylesheet was applied',
+    ).not.toContain('VISIBLEMARKER');
   });
 });
