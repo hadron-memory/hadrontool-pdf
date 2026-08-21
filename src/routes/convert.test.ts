@@ -31,6 +31,7 @@ describe('health + routing', () => {
     const res = await request(app).get('/convert/info');
     expect(res.status).toBe(200);
     expect(res.body.directions).toContain('markdown-to-pdf');
+    expect(res.body.directions).toContain('html-to-pdf');
     expect(res.body.directions).toContain('markdown-to-html');
     expect(res.body.directions).toContain('pdf-to-markdown');
     expect(res.body.directions).toContain('html-to-markdown');
@@ -50,6 +51,33 @@ describe('POST /convert/markdown-to-pdf validation', () => {
 
   it('rejects a missing markdown field', async () => {
     const res = await request(app).post('/convert/markdown-to-pdf').send({});
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /convert/html-to-pdf validation', () => {
+  it('rejects an empty html body', async () => {
+    const res = await request(app).post('/convert/html-to-pdf').send({ html: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a missing html field', async () => {
+    const res = await request(app).post('/convert/html-to-pdf').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an empty raw text/html body', async () => {
+    const res = await request(app)
+      .post('/convert/html-to-pdf')
+      .set('content-type', 'text/html')
+      .send('');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an unknown paper format', async () => {
+    const res = await request(app)
+      .post('/convert/html-to-pdf')
+      .send({ html: '<p>hi</p>', options: { format: 'Poster' } });
     expect(res.status).toBe(400);
   });
 });
@@ -205,5 +233,144 @@ describe('round-trip (requires Chromium)', () => {
     expect(res.status).toBe(200);
     expect(typeof res.body.pdfBase64).toBe('string');
     expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('html -> pdf renders the caller document verbatim, then round-trips back', async (ctx) => {
+    if (!browserOk) ctx.skip();
+
+    const html =
+      '<!DOCTYPE html><html><head><title>Ignored</title></head>' +
+      '<body><h1>Certificate of Completion</h1><p>Awarded to Amara Okonkwo.</p></body></html>';
+
+    const pdfRes = await request(app)
+      .post('/convert/html-to-pdf')
+      .send({ html, options: { title: 'Cert', landscape: true } })
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(pdfRes.status).toBe(200);
+    expect(pdfRes.headers['content-type']).toContain('application/pdf');
+    expect(pdfRes.headers['content-disposition']).toContain('Cert.pdf');
+    const pdf = pdfRes.body as Buffer;
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+
+    const mdRes = await request(app)
+      .post('/convert/pdf-to-markdown')
+      .set('content-type', 'application/pdf')
+      .send(pdf);
+
+    expect(mdRes.status).toBe(200);
+    expect(mdRes.body.markdown.toLowerCase()).toContain('certificate of completion');
+    expect(mdRes.body.markdown).toContain('Amara Okonkwo');
+  });
+
+  it('accepts a raw text/html body and returns base64 on request', async (ctx) => {
+    if (!browserOk) ctx.skip();
+    const res = await request(app)
+      .post('/convert/html-to-pdf?format=base64')
+      .set('content-type', 'text/html')
+      .send('<h1>Raw body</h1>');
+    expect(res.status).toBe(200);
+    expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('renders an inlined data: URI image with remote fetching disabled', async (ctx) => {
+    if (!browserOk) ctx.skip();
+    // The hardening aborts every non-data: request, so an inlined asset is the
+    // only way a layout can carry a background or a signature. Pinning it here
+    // because a regression would return 200 with the image silently missing.
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#0b5cd5"/></svg>',
+    ).toString('base64');
+    const html = `<body><img src="data:image/svg+xml;base64,${svg}"><p>with art</p></body>`;
+
+    const res = await request(app).post('/convert/html-to-pdf?format=base64').send({ html });
+    expect(res.status).toBe(200);
+    expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('the css option actually takes effect in the rendered PDF', async (ctx) => {
+    if (!browserOk) ctx.skip();
+
+    // Asserts the OUTCOME rather than where the <style> element was placed.
+    // That distinction is the whole point here: the failure mode this endpoint
+    // kept producing was a stylesheet parsed as text, which returns 200 with a
+    // well-formed PDF and no styles applied — indistinguishable from success
+    // unless something reads the rendered page back.
+    const html = '<html><head></head><body><p>VISIBLEMARKER</p></body></html>';
+
+    const renderThenExtract = async (options?: Record<string, unknown>): Promise<string> => {
+      const pdfRes = await request(app)
+        .post('/convert/html-to-pdf?format=base64')
+        .send(options ? { html, options } : { html });
+      expect(pdfRes.status).toBe(200);
+
+      const mdRes = await request(app)
+        .post('/convert/pdf-to-markdown')
+        .set('content-type', 'application/pdf')
+        .send(Buffer.from(pdfRes.body.pdfBase64, 'base64'));
+      expect(mdRes.status).toBe(200);
+      return mdRes.body.markdown;
+    };
+
+    expect(await renderThenExtract(), 'control: the text renders').toContain('VISIBLEMARKER');
+    expect(
+      await renderThenExtract({ css: 'p{display:none}' }),
+      'the caller css hid it, so the stylesheet was applied',
+    ).not.toContain('VISIBLEMARKER');
+  });
+
+  /**
+   * The documents that defeated every string-level way of placing the <style>.
+   * Each contains a `</head>` that is TEXT rather than a tag, or ends in an open
+   * tokenizer context that swallows anything appended after it. Applying the CSS
+   * to the parsed document instead of the source string makes all of them
+   * ordinary — and each failure they used to cause was silent, so they are
+   * asserted on the rendered output rather than on the markup.
+   */
+  // One test looping the cases rather than `it.each`, because `it.each` does not
+  // pass the test context as a trailing argument — so `ctx.skip()` throws where
+  // Chromium is unavailable, which is precisely the environment the skip exists
+  // for. It passed locally (browser present, skip branch never taken) and failed
+  // in CI.
+  it('applies the css option to documents that defeat string-level injection', async (ctx) => {
+    if (!browserOk) ctx.skip();
+
+    const cases: [string, string][] = [
+      ['</head> in a comment', '<head><!-- </head> --></head><body><p>MARKER</p></body>'],
+      ['</head> in a title', '<head><title>x </head> y</title></head><body><p>MARKER</p></body>'],
+      ['</head> in an attribute', '<head><meta content="a </head> b"></head><body><p>MARKER</p></body>'],
+      ['an unclosed textarea', '<body><p>MARKER</p><textarea>trailing'],
+      ['an unterminated comment', '<body><p>MARKER</p><!-- trailing'],
+      // Later in document order than <head>, so it wins at equal specificity
+      // unless the override is appended at the END of the document.
+      ['a body-level stylesheet', '<body><p>MARKER</p><style>p{display:block}</style></body>'],
+      // Would block an injected inline style, silently, without a CSP bypass.
+      [
+        'a restrictive Content-Security-Policy',
+        '<head><meta http-equiv="Content-Security-Policy" content="style-src \'none\'"></head>' +
+          '<body><p>MARKER</p></body>',
+      ],
+    ];
+
+    for (const [label, html] of cases) {
+      const res = await request(app)
+        .post('/convert/html-to-pdf?format=base64')
+        .send({ html, options: { css: 'p{display:none}' } });
+      expect(res.status, label).toBe(200);
+
+      const md = await request(app)
+        .post('/convert/pdf-to-markdown')
+        .set('content-type', 'application/pdf')
+        .send(Buffer.from(res.body.pdfBase64, 'base64'));
+      expect(md.status, label).toBe(200);
+      expect(md.body.markdown, `${label}: the stylesheet reached the document`).not.toContain(
+        'MARKER',
+      );
+    }
   });
 });

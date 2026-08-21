@@ -7,6 +7,7 @@ import {
   PdfToMarkdownSchema,
   PdfOptionsSchema,
   HtmlToMarkdownSchema,
+  HtmlToPdfSchema,
   MarkdownToHtmlSchema,
   MAX_HTML_CHARS,
 } from '../types.js';
@@ -40,6 +41,71 @@ convertRouter.post(
         req.query.format === 'base64' || req.accepts(['application/pdf', 'application/json']) === 'application/json';
 
       logger.info('markdown-to-pdf', { bytes: pdf.length, format: opts.format, json: wantsJson });
+
+      if (wantsJson) {
+        res.json({ pdfBase64: pdf.toString('base64'), bytes: pdf.length });
+        return;
+      }
+
+      res
+        .status(200)
+        .setHeader('Content-Type', 'application/pdf')
+        .setHeader('Content-Length', pdf.length)
+        .setHeader('Content-Disposition', `inline; filename="${(opts.title || 'document').replace(/[^\w.-]/g, '_')}.pdf"`)
+        .send(pdf);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * POST /convert/html-to-pdf
+ * Body: JSON { html: string, options?: PdfOptions }, OR a raw text/html payload
+ * (which takes the default options, since there is nowhere to carry them).
+ * Returns: application/pdf bytes by default, or { pdfBase64, bytes } when the
+ * client sends `Accept: application/json` or `?format=base64`.
+ *
+ * The caller's HTML is rendered VERBATIM — nothing is wrapped, nothing is
+ * restyled. Typically that is a complete document; a bare fragment also works,
+ * since Chromium supplies the missing structure. That is the point of this
+ * direction: it is for output that is a layout rather than prose, where the
+ * Markdown path's wrapper and default stylesheet would fight the caller's own
+ * positioning. Everything else matches markdown-to-pdf: same auth, same page
+ * geometry, same JavaScript-disabled and remote-blocked rendering.
+ */
+convertRouter.post(
+  '/html-to-pdf',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      let html: string;
+      // Explicitly undefined: the raw text/html mode carries no options, and
+      // `?? {}` below turns that into the documented defaults.
+      let options: unknown = undefined;
+      const contentType = req.get('content-type') ?? '';
+
+      if (contentType.includes('text/html')) {
+        if (typeof req.body !== 'string' || req.body.length === 0) {
+          throw new HttpError(400, 'empty text/html body');
+        }
+        // Enforce the same cap the JSON schema applies, so both modes match.
+        if (req.body.length > MAX_HTML_CHARS) {
+          throw new HttpError(413, `html body exceeds ${MAX_HTML_CHARS} characters`);
+        }
+        html = req.body;
+      } else {
+        const parsed = HtmlToPdfSchema.parse(req.body);
+        html = parsed.html;
+        options = parsed.options;
+      }
+
+      const opts = PdfOptionsSchema.parse(options ?? {});
+      const pdf = await htmlToPdf(html, opts, opts.css);
+
+      const wantsJson =
+        req.query.format === 'base64' || req.accepts(['application/pdf', 'application/json']) === 'application/json';
+
+      logger.info('html-to-pdf', { bytes: pdf.length, format: opts.format, json: wantsJson });
 
       if (wantsJson) {
         res.json({ pdfBase64: pdf.toString('base64'), bytes: pdf.length });
@@ -171,7 +237,7 @@ convertRouter.post(
 convertRouter.get('/info', (_req, res) => {
   res.json({
     service: 'hadrontool-pdf',
-    directions: ['markdown-to-pdf', 'markdown-to-html', 'pdf-to-markdown', 'html-to-markdown'],
+    directions: ['markdown-to-pdf', 'html-to-pdf', 'markdown-to-html', 'pdf-to-markdown', 'html-to-markdown'],
     allowRemote: config.allowRemote,
     authRequired: Boolean(config.serviceToken),
   });

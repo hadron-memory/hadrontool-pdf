@@ -13,7 +13,10 @@ platform and why the boundary is drawn here.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/convert/markdown-to-pdf` | Render Markdown to a PDF |
+| `POST` | `/convert/html-to-pdf` | Render an HTML document to a PDF |
+| `POST` | `/convert/markdown-to-html` | Render Markdown to a self-contained HTML document |
 | `POST` | `/convert/pdf-to-markdown` | Extract Markdown text from a PDF |
+| `POST` | `/convert/html-to-markdown` | Convert content HTML to Markdown |
 | `GET` | `/convert/info` | Service capabilities (no secrets) |
 | `GET` | `/healthz` | Liveness |
 | `GET` | `/readyz` | Readiness (+ whether Chromium is warm) |
@@ -50,6 +53,53 @@ curl -sS -X POST http://localhost:8080/convert/markdown-to-pdf \
   -d '{"markdown":"# Hello\n\nWorld"}' \
   -o out.pdf
 ```
+
+### `POST /convert/html-to-pdf`
+
+For documents that are a **layout** rather than prose — a certificate, an
+invoice, a report cover, a badge. Routing those through Markdown means embedding
+raw HTML in Markdown and fighting the converter over what it escapes, wraps or
+reflows; here your HTML is rendered **verbatim**, with no wrapper and no default
+stylesheet. Usually that is a complete document — a bare fragment works too,
+since Chromium supplies the missing structure.
+
+Request (JSON), or a raw `text/html` body when you don't need options:
+
+```jsonc
+{
+  "html": "<!DOCTYPE html><html>…</html>",
+  "options": {
+    "title": "Certificate",        // filename only — the document has its own <title>
+    "format": "A4",                // A4 | A3 | A5 | Letter | Legal | Tabloid
+    "landscape": true,
+    "printBackground": true,
+    "margin": { "top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm" },
+    "css": "@page { size: A4 landscape }" // optional, appended AFTER your styles
+  }
+}
+```
+
+Response: identical to `markdown-to-pdf` — `application/pdf` bytes by default,
+or `{ "pdfBase64": "...", "bytes": 12345 }` with `Accept: application/json` or
+`?format=base64`.
+
+```bash
+curl -sS -X POST http://localhost:8080/convert/html-to-pdf \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $PDF_SERVICE_TOKEN" \
+  -d '{"html":"<h1>Hello</h1>","options":{"landscape":true}}' \
+  -o out.pdf
+```
+
+**Inline your assets as `data:` URIs.** Rendering runs with JavaScript disabled
+and, unless `PDF_ALLOW_REMOTE=true`, every non-`data:` request is aborted — so a
+background image or signature referenced by URL renders as nothing and still
+returns `200`. Inlining also makes the render deterministic and offline, which
+matters for a document people keep.
+
+**Fonts are the image's, not yours.** A document naming a typeface the container
+does not have falls back silently. Embed the face as a `data:` URI `@font-face`
+if exact typography matters.
 
 ### `POST /convert/pdf-to-markdown`
 
