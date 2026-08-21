@@ -12,6 +12,41 @@ import type { PdfOptions } from '../types.js';
  * aborted — only `data:` and the initial `about:blank`/document load proceed.
  * That blocks `file://` reads and remote (SSRF) fetches via crafted Markdown.
  */
+/**
+ * Append caller-supplied CSS to a COMPLETE HTML document, last in `<head>` so
+ * it overrides the document's own styles — the same meaning `css` has on the
+ * Markdown path, where it is appended after the default stylesheet.
+ *
+ * Falls back to the top of `<body>`, then to the front of the string, so a
+ * fragment or a headless document still gets the styles rather than silently
+ * dropping them.
+ *
+ * The `</style>` neutralization mirrors `markdownToHtml`: without it, CSS
+ * carrying a close tag would end the `<style>` element and inject arbitrary
+ * markup into the rendered document.
+ *
+ * Replacements are FUNCTIONS, not strings: a `$&` or `$1` inside caller CSS
+ * would otherwise be interpreted as a replacement pattern and silently corrupt
+ * the stylesheet.
+ */
+export function injectExtraCss(html: string, css?: string): string {
+  if (!css) return html;
+
+  const safe = css.replace(/<\/style/gi, '<\\/style');
+  const block = `<style>\n${safe}\n</style>`;
+
+  if (/<\/head>/i.test(html)) {
+    // Re-emit the MATCHED text rather than a literal `</head>`: this endpoint
+    // renders the caller's document verbatim, and rewriting their `</HEAD>` to
+    // lowercase would be a silent edit to it.
+    return html.replace(/<\/head>/i, match => `${block}\n${match}`);
+  }
+  if (/<body[^>]*>/i.test(html)) {
+    return html.replace(/<body[^>]*>/i, match => `${match}\n${block}`);
+  }
+  return `${block}\n${html}`;
+}
+
 export async function htmlToPdf(html: string, options: PdfOptions): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();

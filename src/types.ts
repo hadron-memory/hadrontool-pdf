@@ -39,6 +39,26 @@ export const MarkdownToPdfSchema = z.object({
 export type MarkdownToPdfRequest = z.infer<typeof MarkdownToPdfSchema>;
 
 /**
+ * JSON body shape for html->pdf (alternative to a raw text/html body).
+ *
+ * The caller supplies a COMPLETE document and it is rendered verbatim — this is
+ * the direction to use when the output is a *layout* rather than prose (a
+ * certificate, an invoice, a report cover), where routing through Markdown
+ * would mean fighting the converter over what it escapes, wraps or reflows.
+ *
+ * Shares `PdfOptionsSchema` with markdown-to-pdf so page geometry behaves
+ * identically. `css` is appended to the caller's own styles rather than
+ * replacing them; `title` sets the download filename only, since the document
+ * already carries its own `<title>`.
+ */
+export const HtmlToPdfSchema = z.object({
+  html: z.string().min(1, 'html must not be empty').max(MAX_HTML_CHARS),
+  options: PdfOptionsSchema.optional(),
+});
+
+export type HtmlToPdfRequest = z.infer<typeof HtmlToPdfSchema>;
+
+/**
  * Options for markdown->HTML. A subset of PdfOptions — only the two fields that
  * affect the HTML document itself apply; page geometry (format/margin/...) is
  * PDF-only. `PdfOptions` is structurally assignable to this, so the shared

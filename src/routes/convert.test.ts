@@ -31,6 +31,7 @@ describe('health + routing', () => {
     const res = await request(app).get('/convert/info');
     expect(res.status).toBe(200);
     expect(res.body.directions).toContain('markdown-to-pdf');
+    expect(res.body.directions).toContain('html-to-pdf');
     expect(res.body.directions).toContain('markdown-to-html');
     expect(res.body.directions).toContain('pdf-to-markdown');
     expect(res.body.directions).toContain('html-to-markdown');
@@ -50,6 +51,33 @@ describe('POST /convert/markdown-to-pdf validation', () => {
 
   it('rejects a missing markdown field', async () => {
     const res = await request(app).post('/convert/markdown-to-pdf').send({});
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /convert/html-to-pdf validation', () => {
+  it('rejects an empty html body', async () => {
+    const res = await request(app).post('/convert/html-to-pdf').send({ html: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a missing html field', async () => {
+    const res = await request(app).post('/convert/html-to-pdf').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an empty raw text/html body', async () => {
+    const res = await request(app)
+      .post('/convert/html-to-pdf')
+      .set('content-type', 'text/html')
+      .send('');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an unknown paper format', async () => {
+    const res = await request(app)
+      .post('/convert/html-to-pdf')
+      .send({ html: '<p>hi</p>', options: { format: 'Poster' } });
     expect(res.status).toBe(400);
   });
 });
@@ -205,5 +233,73 @@ describe('round-trip (requires Chromium)', () => {
     expect(res.status).toBe(200);
     expect(typeof res.body.pdfBase64).toBe('string');
     expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('html -> pdf renders the caller document verbatim, then round-trips back', async (ctx) => {
+    if (!browserOk) ctx.skip();
+
+    const html =
+      '<!DOCTYPE html><html><head><title>Ignored</title></head>' +
+      '<body><h1>Certificate of Completion</h1><p>Awarded to Amara Okonkwo.</p></body></html>';
+
+    const pdfRes = await request(app)
+      .post('/convert/html-to-pdf')
+      .send({ html, options: { title: 'Cert', landscape: true } })
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(pdfRes.status).toBe(200);
+    expect(pdfRes.headers['content-type']).toContain('application/pdf');
+    expect(pdfRes.headers['content-disposition']).toContain('Cert.pdf');
+    const pdf = pdfRes.body as Buffer;
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+
+    const mdRes = await request(app)
+      .post('/convert/pdf-to-markdown')
+      .set('content-type', 'application/pdf')
+      .send(pdf);
+
+    expect(mdRes.status).toBe(200);
+    expect(mdRes.body.markdown.toLowerCase()).toContain('certificate of completion');
+    expect(mdRes.body.markdown).toContain('Amara Okonkwo');
+  });
+
+  it('accepts a raw text/html body and returns base64 on request', async (ctx) => {
+    if (!browserOk) ctx.skip();
+    const res = await request(app)
+      .post('/convert/html-to-pdf?format=base64')
+      .set('content-type', 'text/html')
+      .send('<h1>Raw body</h1>');
+    expect(res.status).toBe(200);
+    expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('renders an inlined data: URI image with remote fetching disabled', async (ctx) => {
+    if (!browserOk) ctx.skip();
+    // The hardening aborts every non-data: request, so an inlined asset is the
+    // only way a layout can carry a background or a signature. Pinning it here
+    // because a regression would return 200 with the image silently missing.
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#0b5cd5"/></svg>',
+    ).toString('base64');
+    const html = `<body><img src="data:image/svg+xml;base64,${svg}"><p>with art</p></body>`;
+
+    const res = await request(app).post('/convert/html-to-pdf?format=base64').send({ html });
+    expect(res.status).toBe(200);
+    expect(Buffer.from(res.body.pdfBase64, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('applies the css option on top of the caller own styles', async (ctx) => {
+    if (!browserOk) ctx.skip();
+    const html = '<html><head><style>h1{color:#ff0000}</style></head><body><h1>Tinted</h1></body></html>';
+    const res = await request(app)
+      .post('/convert/html-to-pdf?format=base64')
+      .send({ html, options: { css: 'h1{color:#00ff00}' } });
+    expect(res.status).toBe(200);
+    expect(res.body.bytes).toBeGreaterThan(0);
   });
 });
