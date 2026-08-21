@@ -332,25 +332,45 @@ describe('round-trip (requires Chromium)', () => {
    * ordinary — and each failure they used to cause was silent, so they are
    * asserted on the rendered output rather than on the markup.
    */
-  it.each([
-    ['</head> in a comment', '<head><!-- </head> --></head><body><p>MARKER</p></body>'],
-    ['</head> in a title', '<head><title>x </head> y</title></head><body><p>MARKER</p></body>'],
-    ['</head> in an attribute', '<head><meta content="a </head> b"></head><body><p>MARKER</p></body>'],
-    ['an unclosed textarea', '<body><p>MARKER</p><textarea>trailing'],
-    ['an unterminated comment', '<body><p>MARKER</p><!-- trailing'],
-  ])('applies the css option to a document with %s', async (_label, html, ctx) => {
-    if (!browserOk) (ctx as { skip: () => void }).skip();
+  // One test looping the cases rather than `it.each`, because `it.each` does not
+  // pass the test context as a trailing argument — so `ctx.skip()` throws where
+  // Chromium is unavailable, which is precisely the environment the skip exists
+  // for. It passed locally (browser present, skip branch never taken) and failed
+  // in CI.
+  it('applies the css option to documents that defeat string-level injection', async (ctx) => {
+    if (!browserOk) ctx.skip();
 
-    const res = await request(app)
-      .post('/convert/html-to-pdf?format=base64')
-      .send({ html, options: { css: 'p{display:none}' } });
-    expect(res.status).toBe(200);
+    const cases: [string, string][] = [
+      ['</head> in a comment', '<head><!-- </head> --></head><body><p>MARKER</p></body>'],
+      ['</head> in a title', '<head><title>x </head> y</title></head><body><p>MARKER</p></body>'],
+      ['</head> in an attribute', '<head><meta content="a </head> b"></head><body><p>MARKER</p></body>'],
+      ['an unclosed textarea', '<body><p>MARKER</p><textarea>trailing'],
+      ['an unterminated comment', '<body><p>MARKER</p><!-- trailing'],
+      // Later in document order than <head>, so it wins at equal specificity
+      // unless the override is appended at the END of the document.
+      ['a body-level stylesheet', '<body><p>MARKER</p><style>p{display:block}</style></body>'],
+      // Would block an injected inline style, silently, without a CSP bypass.
+      [
+        'a restrictive Content-Security-Policy',
+        '<head><meta http-equiv="Content-Security-Policy" content="style-src \'none\'"></head>' +
+          '<body><p>MARKER</p></body>',
+      ],
+    ];
 
-    const md = await request(app)
-      .post('/convert/pdf-to-markdown')
-      .set('content-type', 'application/pdf')
-      .send(Buffer.from(res.body.pdfBase64, 'base64'));
-    expect(md.status).toBe(200);
-    expect(md.body.markdown, 'the stylesheet reached the document').not.toContain('MARKER');
+    for (const [label, html] of cases) {
+      const res = await request(app)
+        .post('/convert/html-to-pdf?format=base64')
+        .send({ html, options: { css: 'p{display:none}' } });
+      expect(res.status, label).toBe(200);
+
+      const md = await request(app)
+        .post('/convert/pdf-to-markdown')
+        .set('content-type', 'application/pdf')
+        .send(Buffer.from(res.body.pdfBase64, 'base64'));
+      expect(md.status, label).toBe(200);
+      expect(md.body.markdown, `${label}: the stylesheet reached the document`).not.toContain(
+        'MARKER',
+      );
+    }
   });
 });

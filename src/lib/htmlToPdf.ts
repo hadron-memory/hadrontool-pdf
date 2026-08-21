@@ -60,18 +60,35 @@ export async function htmlToPdf(
       void req.abort();
     });
 
+    // A caller document carrying its own Content-Security-Policy would
+    // otherwise block the style node added below, and block it SILENTLY — the
+    // injection call still succeeds and the PDF comes back unstyled. Safe here
+    // because the two things CSP would be protecting against are already gone:
+    // page scripts are disabled, and every non-`data:` request is aborted
+    // regardless of what any policy permits.
+    await page.setBypassCSP(true);
+
     await page.setContent(html, { waitUntil: 'load', timeout: 30_000 });
 
-    // After setContent, so the browser has already resolved the caller's markup
-    // and there is no tokenizer state left to guess at. addStyleTag appends to
-    // <head>, which puts it after the document's own styles in the cascade.
+    // Applied to the PARSED document, after setContent, so there is no
+    // tokenizer state left to guess at.
+    //
+    // Appended to the END of the body rather than to <head>: a caller may carry
+    // a <style> or a stylesheet link in the body, which is later in document
+    // order than <head> and would therefore win at equal specificity. `css` is
+    // documented to come after ALL the caller's styles, so it has to be last in
+    // the document, not merely present.
     //
     // This works despite setJavaScriptEnabled(false): that disables scripts
-    // belonging to the PAGE, while addStyleTag runs through the DevTools
-    // protocol, which is not page script. Pinned by an end-to-end test rather
-    // than trusted — a silent failure here looks exactly like success.
+    // belonging to the PAGE, while this runs over the DevTools protocol, which
+    // is not page script. Pinned by end-to-end tests rather than trusted — a
+    // silent failure here looks exactly like success.
     if (extraCss) {
-      await page.addStyleTag({ content: extraCss });
+      await page.evaluate((cssText: string) => {
+        const style = document.createElement('style');
+        style.textContent = cssText;
+        (document.body ?? document.documentElement).appendChild(style);
+      }, extraCss);
     }
 
     await page.emulateMediaType('print');
