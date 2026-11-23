@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { REQUIRED_FAMILIES, createFontReportCache, parseFcFamilies, readFontReport } from './fonts.js';
 
@@ -14,7 +15,7 @@ describe('parseFcFamilies', () => {
 
 describe('readFontReport', () => {
   it('lists families and marks the declared set present', async () => {
-    const out = ['Liberation Sans', 'Liberation Serif', 'Liberation Mono', 'Noto Sans Hebrew', 'Noto Sans Devanagari'].join('\n');
+    const out = [...REQUIRED_FAMILIES].join('\n');
     const r = await readFontReport(async () => out);
     expect(r.source).toBe('fc-list');
     expect(r.families).toContain('Liberation Sans');
@@ -62,5 +63,15 @@ describe('createFontReportCache', () => {
     expect((await get()).source).toBe('unavailable');
     expect((await get()).source).toBe('fc-list');
     expect(calls).toBe(2);
+  });
+});
+
+describe('Dockerfile and REQUIRED_FAMILIES stay in sync', () => {
+  it('the build-time loop names exactly the declared families', () => {
+    const df = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+    const m = df.match(/for f in ((?:"[^"]+"\s*)+); do/);
+    expect(m, 'font check loop not found in Dockerfile').not.toBeNull();
+    const inLoop = [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    expect(inLoop).toEqual([...REQUIRED_FAMILIES]);
   });
 });

@@ -7,7 +7,7 @@ const execFileAsync = promisify(execFile);
 /**
  * Families the Dockerfile declares on purpose (hadrontool-pdf#6): the Latin design-font substitutes
  * (`fonts-liberation`, metric-compatible with Arial/Times/Courier) and the scripts the base image lacks
- * (`fonts-noto-core`: Hebrew, Devanagari). KEEP IN SYNC with the Dockerfile's package list and its build-time check.
+ * (`fonts-noto-core`: Hebrew, Devanagari), and GNU FreeFont (`fonts-freefont-ttf`: Latin/Cyrillic/Greek). KEEP IN SYNC with the Dockerfile's package list and its build-time check.
  */
 export const REQUIRED_FAMILIES = [
   'Liberation Sans',
@@ -15,6 +15,9 @@ export const REQUIRED_FAMILIES = [
   'Liberation Mono',
   'Noto Sans Hebrew',
   'Noto Sans Devanagari',
+  'FreeSans',
+  'FreeSerif',
+  'FreeMono',
 ] as const;
 
 export interface FontReport {
@@ -71,6 +74,10 @@ export function createFontReportCache(run: () => Promise<string> = runFcList): (
       cached = readFontReport(run).then((r) => {
         if (r.source === 'unavailable') cached = undefined;
         return r;
+      });
+      // readFontReport cannot reject (total try/catch); if that ever changed, do not cache the rejection forever.
+      cached.catch(() => {
+        cached = undefined;
       });
     }
     return cached;

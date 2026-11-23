@@ -105,7 +105,10 @@ the Japanese, Chinese, Thai, Khmer and Arabic faces the base image ships. Korean
 colour emoji are not installed. `GET /convert/info` returns `fonts` — `source`,
 `families` (what fontconfig reports in the running container) and `missingDeclared`
 (declared families the image lacks; empty when healthy) — so a caller can assert
-coverage in CI instead of finding tofu in a PDF. Embed the face as a `data:`
+coverage in CI instead of finding tofu in a PDF. If `fc-list` cannot run (a dev host
+without fontconfig), `source` is `unavailable`, `families` is empty, `error` carries a
+fixed reason and `missingDeclared` lists every declared family (fail-closed), so a
+caller should check `source === 'fc-list'` before reading the rest. Embed the face as a `data:`
 `@font-face` if exact typography matters: it survives the `PDF_ALLOW_REMOTE`
 hardening and makes the render deterministic whatever the image ships.
 
