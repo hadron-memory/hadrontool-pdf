@@ -98,8 +98,16 @@ returns `200`. Inlining also makes the render deterministic and offline, which
 matters for a document people keep.
 
 **Fonts are the image's, not yours.** A document naming a typeface the container
-does not have falls back silently. Embed the face as a `data:` URI `@font-face`
-if exact typography matters.
+does not have falls back silently, and still returns `200`. The image declares its
+fonts: Liberation Sans/Serif/Mono (metric-compatible with Arial, Times New Roman and
+Courier New), Noto (Hebrew, Devanagari and the other core scripts), GNU FreeFont, plus
+the Japanese, Chinese, Thai, Khmer and Arabic faces the base image ships. Korean and
+colour emoji are not installed. `GET /convert/info` returns `fonts` — `source`,
+`families` (what fontconfig reports in the running container) and `missingDeclared`
+(declared families the image lacks; empty when healthy) — so a caller can assert
+coverage in CI instead of finding tofu in a PDF. Embed the face as a `data:`
+`@font-face` if exact typography matters: it survives the `PDF_ALLOW_REMOTE`
+hardening and makes the render deterministic whatever the image ships.
 
 ### `POST /convert/pdf-to-markdown`
 

@@ -15,6 +15,7 @@ import { markdownToHtml } from '../lib/markdownToHtml.js';
 import { htmlToPdf } from '../lib/htmlToPdf.js';
 import { pdfToMarkdown } from '../lib/pdfToMarkdown.js';
 import { htmlToMarkdown } from '../lib/htmlToMarkdown.js';
+import { getFontReport } from '../lib/fonts.js';
 import { logger } from '../logger.js';
 
 export const convertRouter = Router();
@@ -234,11 +235,19 @@ convertRouter.post(
 );
 
 // Surfaces config to callers/operators without exposing secrets.
-convertRouter.get('/info', (_req, res) => {
-  res.json({
-    service: 'hadrontool-pdf',
-    directions: ['markdown-to-pdf', 'html-to-pdf', 'markdown-to-html', 'pdf-to-markdown', 'html-to-markdown'],
-    allowRemote: config.allowRemote,
-    authRequired: Boolean(config.serviceToken),
-  });
+convertRouter.get('/info', async (_req, res, next) => {
+  try {
+    const fonts = await getFontReport();
+    res.json({
+      service: 'hadrontool-pdf',
+      directions: ['markdown-to-pdf', 'html-to-pdf', 'markdown-to-html', 'pdf-to-markdown', 'html-to-markdown'],
+      allowRemote: config.allowRemote,
+      authRequired: Boolean(config.serviceToken),
+      // Installed font families, read from the container's fontconfig (hadrontool-pdf#6): a render that falls back
+      // to another typeface still returns 200, so a caller asserts coverage here instead of discovering it in a PDF.
+      fonts,
+    });
+  } catch (err) {
+    next(err);
+  }
 });

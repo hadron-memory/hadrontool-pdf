@@ -68,7 +68,7 @@ npm run test:watch # vitest
   (scripts/styles/handlers and non-http(s) URLs dropped); conversion is **lossy** (no perfect
   table/layout round-trip). Pure/synchronous — no Chromium. Import direction has no export-contract
   spec (`cor:int:020:02`/#394 are the reverse, node→render).
-- `GET /convert/info` · `GET /healthz` (liveness) · `GET /readyz` (readiness + Chromium warm).
+- `GET /convert/info` (config surface, plus `fonts`: installed families from the container's `fc-list` and any declared family that is missing; `REQUIRED_FAMILIES` in `src/lib/fonts.ts` mirrors the Dockerfile's font packages) · `GET /healthz` (liveness) · `GET /readyz` (readiness + Chromium warm).
 
 ## Where things live
 

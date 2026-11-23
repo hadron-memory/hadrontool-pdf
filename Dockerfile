@@ -21,6 +21,23 @@ RUN apt-get update \
   && apt-get purge -y curl gnupg && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
+# Font policy (hadrontool-pdf#6): declared here, not inherited from the base image. The base installs only
+# fonts-ipafont-gothic, fonts-wqy-zenhei, fonts-thai-tlwg, fonts-khmeros, fonts-kacst and fonts-freefont-ttf, so a
+# document naming Arial/Times/Courier silently fell back to FreeFont, and Hebrew/Devanagari had no glyphs at all.
+#  - fonts-liberation: Liberation Sans/Serif/Mono, metric-compatible with Arial/Times New Roman/Courier New.
+#  - fonts-noto-core: Noto Sans Hebrew/Devanagari and the other core scripts.
+#  - fonts-freefont-ttf: re-declared (Latin/Cyrillic/Greek) so it stays if the base pin changes.
+# Korean (fonts-noto-cjk) is left out on purpose (image size) until a caller needs it.
+# KEEP the family list in src/lib/fonts.ts (REQUIRED_FAMILIES) in sync; GET /convert/info reports what is installed.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fonts-liberation fonts-noto-core fonts-freefont-ttf fontconfig \
+  && rm -rf /var/lib/apt/lists/* \
+  && fc-cache -f \
+  # Fail the build, not a render, if the declared coverage is not really there.
+  && fc-list : family | grep -q 'Liberation Sans' \
+  && fc-list :lang=he | grep -q . \
+  && fc-list :lang=hi | grep -q .
+
 # The base image already contains the matching Chromium; don't re-download it
 # during `npm ci`. At runtime puppeteer.launch() finds the image's browser in
 # the default cache (~/.cache/puppeteer for pptruser).
