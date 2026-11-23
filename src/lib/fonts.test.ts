@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REQUIRED_FAMILIES, parseFcFamilies, readFontReport } from './fonts.js';
+import { REQUIRED_FAMILIES, createFontReportCache, parseFcFamilies, readFontReport } from './fonts.js';
 
 describe('parseFcFamilies', () => {
   it('splits comma-joined aliases, trims, dedupes and sorts', () => {
@@ -33,7 +33,34 @@ describe('readFontReport', () => {
     });
     expect(r.source).toBe('unavailable');
     expect(r.families).toEqual([]);
-    expect(r.error).toMatch(/ENOENT/);
+    // fixed reason, never the raw exec text
+    expect(r.error).toBe('fc-list could not be run');
+    expect(r.error).not.toMatch(/ENOENT|spawn/);
     expect(r.missingDeclared).toEqual([...REQUIRED_FAMILIES]);
+  });
+});
+
+describe('createFontReportCache', () => {
+  it('keeps one successful read', async () => {
+    let calls = 0;
+    const get = createFontReportCache(async () => {
+      calls++;
+      return 'Liberation Sans\n';
+    });
+    await get();
+    await get();
+    expect(calls).toBe(1);
+  });
+
+  it('retries after a failed read instead of caching the failure', async () => {
+    let calls = 0;
+    const get = createFontReportCache(async () => {
+      calls++;
+      if (calls === 1) throw new Error('boom');
+      return 'Liberation Sans\n';
+    });
+    expect((await get()).source).toBe('unavailable');
+    expect((await get()).source).toBe('fc-list');
+    expect(calls).toBe(2);
   });
 });

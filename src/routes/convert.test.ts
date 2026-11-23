@@ -35,6 +35,10 @@ describe('health + routing', () => {
     expect(res.body.directions).toContain('markdown-to-html');
     expect(res.body.directions).toContain('pdf-to-markdown');
     expect(res.body.directions).toContain('html-to-markdown');
+    // real handler wiring to the real font reader (fc-list may be absent in some environments)
+    expect(['fc-list', 'unavailable']).toContain(res.body.fonts.source);
+    expect(Array.isArray(res.body.fonts.families)).toBe(true);
+    expect(Array.isArray(res.body.fonts.missingDeclared)).toBe(true);
   });
 
   it('unknown route 404s', async () => {

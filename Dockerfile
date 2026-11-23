@@ -21,22 +21,22 @@ RUN apt-get update \
   && apt-get purge -y curl gnupg && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
-# Font policy (hadrontool-pdf#6): declared here, not inherited from the base image. The base installs only
-# fonts-ipafont-gothic, fonts-wqy-zenhei, fonts-thai-tlwg, fonts-khmeros, fonts-kacst and fonts-freefont-ttf, so a
-# document naming Arial/Times/Courier silently fell back to FreeFont, and Hebrew/Devanagari had no glyphs at all.
+# Font policy (hadrontool-pdf#6): declared here, not inherited from the base image. The base installs fonts-ipafont-gothic,
+# fonts-wqy-zenhei, fonts-thai-tlwg, fonts-khmeros, fonts-kacst and fonts-freefont-ttf; whatever else it resolves (Liberation,
+# DejaVu) is incidental and can change with a pin bump. Declaring the set makes it a guarantee:
 #  - fonts-liberation: Liberation Sans/Serif/Mono, metric-compatible with Arial/Times New Roman/Courier New.
-#  - fonts-noto-core: Noto Sans Hebrew/Devanagari and the other core scripts.
+#  - fonts-noto-core: Noto Sans Hebrew and Noto Sans Devanagari (Hebrew otherwise falls to DejaVu, Devanagari to FreeSans).
 #  - fonts-freefont-ttf: re-declared (Latin/Cyrillic/Greek) so it stays if the base pin changes.
 # Korean (fonts-noto-cjk) is left out on purpose (image size) until a caller needs it.
-# KEEP the family list in src/lib/fonts.ts (REQUIRED_FAMILIES) in sync; GET /convert/info reports what is installed.
+# The build fails if ANY declared family is absent. KEEP the loop below in sync with REQUIRED_FAMILIES in src/lib/fonts.ts;
+# GET /convert/info reports what is installed and what is missing.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends fonts-liberation fonts-noto-core fonts-freefont-ttf fontconfig \
   && rm -rf /var/lib/apt/lists/* \
   && fc-cache -f \
-  # Fail the build, not a render, if the declared coverage is not really there.
-  && fc-list : family | grep -q 'Liberation Sans' \
-  && fc-list :lang=he | grep -q . \
-  && fc-list :lang=hi | grep -q .
+  && for f in "Liberation Sans" "Liberation Serif" "Liberation Mono" "Noto Sans Hebrew" "Noto Sans Devanagari"; do \
+       fc-list : family | grep -Fq "$f" || { echo "font check failed: $f is not installed" >&2; exit 1; }; \
+     done
 
 # The base image already contains the matching Chromium; don't re-download it
 # during `npm ci`. At runtime puppeteer.launch() finds the image's browser in

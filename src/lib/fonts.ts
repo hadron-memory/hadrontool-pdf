@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { logger } from '../logger.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,24 +52,29 @@ export async function readFontReport(run: () => Promise<string> = runFcList): Pr
       missingDeclared: REQUIRED_FAMILIES.filter((f) => !families.includes(f)),
     };
   } catch (err) {
+    logger.warn('fc-list failed', { error: err instanceof Error ? err.message : String(err) });
     return {
       source: 'unavailable',
       families: [],
       missingDeclared: [...REQUIRED_FAMILIES],
-      error: err instanceof Error ? err.message : String(err),
+      // A fixed reason: the raw spawn/exec text can carry paths and environment detail; the cause goes to the log.
+      error: 'fc-list could not be run',
     };
   }
 }
 
-let cached: Promise<FontReport> | undefined;
-
 /** Fonts do not change while the container runs, so one successful read is kept; a failed read is retried. */
-export function getFontReport(): Promise<FontReport> {
-  if (!cached) {
-    cached = readFontReport().then((r) => {
-      if (r.source === 'unavailable') cached = undefined;
-      return r;
-    });
-  }
-  return cached;
+export function createFontReportCache(run: () => Promise<string> = runFcList): () => Promise<FontReport> {
+  let cached: Promise<FontReport> | undefined;
+  return () => {
+    if (!cached) {
+      cached = readFontReport(run).then((r) => {
+        if (r.source === 'unavailable') cached = undefined;
+        return r;
+      });
+    }
+    return cached;
+  };
 }
+
+export const getFontReport = createFontReportCache();
